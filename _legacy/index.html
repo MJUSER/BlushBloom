@@ -1,0 +1,880 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Business Tracker Pro - Modern Dashboard</title>
+    <script src="https://unpkg.com/dexie@3.2.3/dist/dexie.min.js"></script> 
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <style>
+        /* --- 1. TAILWIND CONFIGURATION & CUSTOM STYLES --- */
+        
+        /* Define custom colors for better coherence */
+        tailwind.config = {
+            darkMode: 'selector',
+            theme: {
+                extend: {
+                    colors: {
+                        'primary-blue': '#2563eb', // Blue-600
+                        'bg-default': '#f9fafb',   // Gray-50 (light mode)
+                        'bg-dark': '#0f172a',      // Slate-900 (dark mode)
+                        'card-light': '#ffffff',
+                        'card-dark': '#1e293b',    // Slate-800
+                        'text-dark': '#e2e8f0',    // Slate-200
+                        'border-subtle': '#e5e7eb',
+                        'border-dark': '#334155',
+                    }
+                }
+            }
+        }
+
+        /* Base styles for smooth transitions */
+        body { min-height: 100vh; transition: background-color 0.3s, color 0.3s; }
+        .section.active { animation: fadeIn 0.3s; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+
+        /* Status Badges */
+        .status-badge { 
+            padding: 4px 8px; border-radius: 6px; font-weight: 600; font-size: 0.75rem; 
+            display: inline-block;
+        }
+        .s-new { background-color: #fef9c3; color: #a16207; } 
+        .s-pending { background-color: #e0f2fe; color: #0369a1; } 
+        .s-shipped { background-color: #dcfce7; color: #059669; } 
+        .s-delivered { background-color: #ccfbf1; color: #0f766e; } 
+        .s-cancelled { background-color: #ffe4e6; color: #be123c; } 
+        
+        [data-theme="dark"] .s-new { background-color: #4c3e07; color: #facc15; }
+        [data-theme="dark"] .s-pending { background-color: #0c4a6e; color: #7dd3fc; }
+        [data-theme="dark"] .s-shipped { background-color: #065f46; color: #6ee7b7; }
+        [data-theme="dark"] .s-delivered { background-color: #0f766e; color: #5eead4; }
+        [data-theme="dark"] .s-cancelled { background-color: #7f1d1d; color: #fda4af; }
+
+        /* Read-only inputs (Cost Calculator) */
+        .read-only-input {
+            background-color: #eff6ff !important;
+            color: #1e40af !important;
+            font-weight: bold;
+            border: none !important;
+        }
+        [data-theme="dark"] .read-only-input {
+            background-color: #1e3a8a !important;
+            color: #93c5fd !important;
+        }
+
+        /* Segmented Control Styling */
+        .segmented-control {
+            display: flex; background: #e5e7eb; border-radius: 8px; padding: 4px;
+            box-shadow: inset 0 1px 2px rgba(0,0,0,0.1);
+        }
+        [data-theme="dark"] .segmented-control {
+            background: #334155;
+            box-shadow: inset 0 1px 2px rgba(0,0,0,0.3);
+        }
+        .segmented-control .tab-btn {
+            flex-grow: 1;
+            padding: 8px 16px;
+            border-radius: 6px;
+            font-size: 0.875rem;
+            font-weight: 600;
+            color: #4b5563; /* Gray-600 */
+            transition: all 0.2s;
+            text-align: center;
+        }
+        [data-theme="dark"] .segmented-control .tab-btn {
+            color: #94a3b8; /* Slate-400 */
+        }
+        .segmented-control .tab-btn.active {
+            background: #ffffff;
+            color: #2563eb; /* Primary Blue */
+            box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
+        }
+        [data-theme="dark"] .segmented-control .tab-btn.active {
+            background: #475569; /* Slate-600 */
+            color: #93c5fd; /* Blue-300 */
+            box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.3);
+        }
+    </style>
+
+</head>
+<body data-theme="light" class="bg-bg-default dark:bg-bg-dark text-gray-900 dark:text-text-dark antialiased">
+
+    <header class="fixed top-0 left-0 right-0 h-20 shadow-xl dark:shadow-slate-800/50 border-b border-border-subtle dark:border-border-dark z-50 bg-white dark:bg-card-dark transition-colors duration-300">
+        <div class="container mx-auto px-4 h-full flex items-center justify-between">
+            <h1 class="text-2xl font-extrabold flex items-center gap-2 text-primary-blue dark:text-blue-400">
+                <i class="fas fa-chart-line"></i> Tracker Pro
+            </h1>
+            
+            <nav class="segmented-control">
+                <button class="tab-btn active" onclick="showTab('dashboard', this)">
+                    <i class="fas fa-home mr-1"></i> Dashboard
+                </button>
+                <button class="tab-btn" onclick="showTab('batches', this)">
+                    <i class="fas fa-cogs mr-1"></i> Batches
+                </button>
+                <button class="tab-btn" onclick="showTab('sales', this)">
+                    <i class="fas fa-dollar-sign mr-1"></i> Sales
+                </button>
+            </nav>
+
+            <div class="flex items-center space-x-4">
+                <label for="darkModeToggle" class="cursor-pointer flex items-center gap-2">
+                    <span class="text-sm font-medium hidden sm:inline text-gray-600 dark:text-gray-400">Dark Mode</span>
+                    <input type="checkbox" id="darkModeToggle" onchange="toggleTheme()" class="hidden">
+                    <div class="w-12 h-6 bg-gray-300 dark:bg-gray-700 rounded-full flex-shrink-0 p-0.5 duration-300 ease-in-out">
+                        <div class="bg-white w-5 h-5 rounded-full shadow-md transform duration-300 ease-in-out dark:translate-x-6 flex items-center justify-center">
+                            <i class="fas fa-sun text-yellow-500 text-xs dark:hidden"></i>
+                            <i class="fas fa-moon text-indigo-500 text-xs hidden dark:inline"></i>
+                        </div>
+                    </div>
+                </label>
+            </div>
+        </div>
+    </header>
+
+<div class="pt-24 container mx-auto px-4">
+    
+    <div id="dashboard" class="section active">
+        
+        <div class="p-6 rounded-xl shadow-xl dark:shadow-slate-800 bg-card-light dark:bg-card-dark mb-8 border border-border-subtle dark:border-border-dark">
+            <h2 class="text-xl font-semibold mb-6 pb-3 border-b border-border-subtle dark:border-border-dark"><i class="fas fa-tachometer-alt text-primary-blue mr-2"></i> Sales Performance & Overall Profitability</h2>
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-6">
+                <div class="p-4 border-l-4 border-green-500 bg-green-50 dark:bg-green-950/40 rounded-lg">
+                    <div class="text-sm font-medium text-gray-500 dark:text-gray-400">Total Revenue</div>
+                    <div class="text-3xl font-extrabold text-green-600 dark:text-green-400 mt-2" id="totalRevenue">0.00</div>
+                </div>
+                <div class="p-4 border-l-4 border-teal-500 bg-teal-50 dark:bg-teal-950/40 rounded-lg">
+                    <div class="text-sm font-medium text-gray-500 dark:text-gray-400">Realized Profit (Total Margin)</div>
+                    <div class="text-3xl font-extrabold text-teal-600 dark:text-teal-400 mt-2" id="realizedProfit">0.00</div>
+                </div>
+                <div class="p-4 border-l-4 border-red-500 bg-red-50 dark:bg-red-950/40 rounded-lg">
+                    <div class="text-sm font-medium text-gray-500 dark:text-gray-400">Total Production Cost</div>
+                    <div class="text-3xl font-extrabold text-red-600 dark:text-red-400 mt-2" id="totalCostAll">0.00</div>
+                </div>
+                <div class="p-4 border-l-4 border-yellow-500 bg-yellow-50 dark:bg-yellow-950/40 rounded-lg">
+                    <div class="text-sm font-medium text-gray-500 dark:text-gray-400">Avg. Profit Margin / Sale</div>
+                    <div class="text-3xl font-extrabold text-yellow-600 dark:text-yellow-400 mt-2" id="avgProfitMargin">0.00</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="p-6 rounded-xl shadow-xl dark:shadow-slate-800 bg-card-light dark:bg-card-dark mb-8 border border-border-subtle dark:border-border-dark">
+            <h2 class="text-xl font-semibold mb-6 pb-3 border-b border-border-subtle dark:border-border-dark"><i class="fas fa-box-open text-primary-blue mr-2"></i> Inventory & Cost Health</h2>
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-6">
+                <div class="p-4 border-l-4 border-blue-500 bg-blue-50 dark:bg-blue-950/40 rounded-lg">
+                    <div class="text-sm font-medium text-gray-500 dark:text-gray-400">Total Items Produced</div>
+                    <div class="text-3xl font-extrabold text-blue-600 dark:text-blue-400 mt-2" id="totalProduced">0</div>
+                </div>
+                <div class="p-4 border-l-4 border-green-500 bg-green-50 dark:bg-green-950/40 rounded-lg">
+                    <div class="text-sm font-medium text-gray-500 dark:text-gray-400">Total Items Sold</div>
+                    <div class="text-3xl font-extrabold text-green-600 dark:text-green-400 mt-2" id="totalSold">0</div>
+                </div>
+                <div class="p-4 border-l-4 border-red-500 bg-red-50 dark:bg-red-950/40 rounded-lg">
+                    <div class="text-sm font-medium text-gray-500 dark:text-gray-400">Unsold Inventory Value (Cost)</div>
+                    <div class="text-3xl font-extrabold text-red-600 dark:text-red-400 mt-2" id="unsoldCostValue">0.00</div>
+                </div>
+                <div class="p-4 border-l-4 border-teal-500 bg-teal-50 dark:bg-teal-950/40 rounded-lg">
+                    <div class="text-sm font-medium text-gray-500 dark:text-gray-400">Potential Future Revenue</div>
+                    <div class="text-3xl font-extrabold text-teal-600 dark:text-teal-400 mt-2" id="potentialRevenue">0.00</div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="p-6 rounded-xl shadow-xl dark:shadow-slate-800 bg-card-light dark:bg-card-dark mb-8 border border-border-subtle dark:border-border-dark">
+            <h2 class="text-xl font-semibold mb-4 pb-3 border-b border-border-subtle dark:border-border-dark"><i class="fas fa-database text-primary-blue mr-2"></i> Data Management</h2>
+            <p class="text-sm text-gray-600 dark:text-gray-400 mb-6">Protect your data by exporting a JSON backup file. Importing overwrites all existing records.</p>
+            <div class="flex flex-col sm:flex-row gap-4">
+                <button class="flex-1 bg-green-600 hover:bg-green-700 text-white font-medium py-3 rounded-lg transition-colors flex items-center justify-center gap-2" onclick="exportData()">
+                    <i class="fas fa-download"></i> Export Data (.json)
+                </button>
+                <label for="importFile" class="flex-1 bg-yellow-600 hover:bg-yellow-700 text-white font-medium py-3 rounded-lg transition-colors flex items-center justify-center gap-2 cursor-pointer">
+                    <i class="fas fa-upload"></i> Import Data (.json)
+                    <input type="file" id="importFile" class="hidden" accept=".json" onchange="importData(event)">
+                </label>
+            </div>
+            <button onclick="clearDatabase()" class="w-full mt-4 bg-red-600 hover:bg-red-700 text-white font-medium py-2 rounded-lg text-sm transition-colors flex items-center justify-center gap-2">
+                <i class="fas fa-trash-alt"></i> Clear All Data
+            </button>
+        </div>
+    </div>
+
+    <div id="batches" class="section hidden">
+        <div class="p-6 rounded-xl shadow-xl dark:shadow-slate-800 bg-card-light dark:bg-card-dark mb-8 border border-border-subtle dark:border-border-dark" id="batchFormCard">
+            <h2 id="batchFormTitle" class="text-xl font-semibold mb-6 pb-3 border-b border-border-subtle dark:border-border-dark"><i class="fas fa-pencil-alt text-primary-blue mr-2"></i> Create New Batch Plan</h2>
+            
+            <div class="mb-6">
+                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Batch Name / ID</label>
+                <input type="text" id="batchName" placeholder="e.g. Summer Collection Batch 1" class="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 focus:ring-primary-blue focus:border-primary-blue transition-colors">
+            </div>
+
+            <table class="w-full border-collapse rounded-lg overflow-hidden border border-gray-300 dark:border-gray-600 mb-6 text-sm">
+                <thead>
+                    <tr class="bg-gray-100 dark:bg-gray-700 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                        <th class="p-3 w-1/3">Item</th><th class="p-3 w-1/5">Unit Price (₹)</th><th class="p-3 w-1/5">Quantity</th><th class="p-3 w-1/4">Final Cost (₹)</th>
+                    </tr>
+                </thead>
+                <tbody id="costRows" class="divide-y divide-gray-200 dark:divide-gray-700">
+                    <tr class="transition-colors duration-150 hover:bg-gray-50 dark:hover:bg-gray-700"><td>Material Fabric</td><td><input type="number" class="calc w-full p-2 border-none bg-transparent dark:text-gray-300" id="p_mat" value="179"></td><td><input type="number" class="calc w-full p-2 border-none bg-transparent dark:text-gray-300" id="q_mat" value="45"></td><td><input type="text" class="read-only-input p-2 w-full text-right" id="t_mat" readonly></td></tr>
+                    <tr class="transition-colors duration-150 hover:bg-gray-50 dark:hover:bg-gray-700"><td>Lining</td><td><input type="number" class="calc w-full p-2 border-none bg-transparent dark:text-gray-300" id="p_lin" value="70"></td><td><input type="number" class="calc w-full p-2 border-none bg-transparent dark:text-gray-300" id="q_lin" value="40"></td><td><input type="text" class="read-only-input p-2 w-full text-right" id="t_lin" readonly></td></tr>
+                    <tr class="transition-colors duration-150 hover:bg-gray-50 dark:hover:bg-gray-700"><td>Material Shipping</td><td><input type="number" class="calc w-full p-2 border-none bg-transparent dark:text-gray-300" id="p_mship" value="350"></td><td><input type="number" class="calc w-full p-2 border-none bg-transparent dark:text-gray-300" id="q_mship" value="1"></td><td><input type="text" class="read-only-input p-2 w-full text-right" id="t_mship" readonly></td></tr>
+                    <tr class="transition-colors duration-150 hover:bg-gray-50 dark:hover:bg-gray-700"><td>Vendor Shipping</td><td><input type="number" class="calc w-full p-2 border-none bg-transparent dark:text-gray-300" id="p_vship" value="100"></td><td><input type="number" class="calc w-full p-2 border-none bg-transparent dark:text-gray-300" id="q_vship" value="10"></td><td><input type="text" class="read-only-input p-2 w-full text-right" id="t_vship" readonly></td></tr>
+                    <tr class="transition-colors duration-150 hover:bg-gray-50 dark:hover:bg-gray-700"><td>Stitching</td><td><input type="number" class="calc w-full p-2 border-none bg-transparent dark:text-gray-300" id="p_stitch" value="550"></td><td><input type="number" class="calc w-full p-2 border-none bg-transparent dark:text-gray-300" id="q_stitch" value="10"></td><td><input type="text" class="read-only-input p-2 w-full text-right" id="t_stitch" readonly></td></tr>
+                    <tr class="transition-colors duration-150 hover:bg-gray-50 dark:hover:bg-gray-700"><td>Packaging</td><td><input type="number" class="calc w-full p-2 border-none bg-transparent dark:text-gray-300" id="p_pack" value="10"></td><td><input type="number" class="calc w-full p-2 border-none bg-transparent dark:text-gray-300" id="q_pack" value="10"></td><td><input type="text" class="read-only-input p-2 w-full text-right" id="t_pack" readonly></td></tr>
+                    <tr class="transition-colors duration-150 hover:bg-gray-50 dark:hover:bg-gray-700"><td>Customer Shipment</td><td><input type="number" class="calc w-full p-2 border-none bg-transparent dark:text-gray-300" id="p_cship" value="200"></td><td><input type="number" class="calc w-full p-2 border-none bg-transparent dark:text-gray-300" id="q_cship" value="10"></td><td><input type="text" class="read-only-input p-2 w-full text-right" id="t_cship" readonly></td></tr>
+                    <tr class="bg-blue-50 dark:bg-blue-950/50 font-bold text-blue-800 dark:text-blue-300">
+                        <td class="p-3 text-right" colspan="2">TOTAL COST</td>
+                        <td class="p-3">Target: <span id="targetItemsDisplay">0</span></td>
+                        <td><input type="text" class="read-only-input p-2 w-full text-right text-lg" id="grandTotal" readonly></td>
+                    </tr>
+                </tbody>
+            </table>
+            
+            <div class="text-right mb-6 text-sm text-gray-600 dark:text-gray-400">Cost Per Unit (COGS): <strong id="costPerUnitDisplay" class="text-primary-blue dark:text-blue-400 text-lg">0.00</strong></div>
+
+            <div class="flex gap-4">
+                <button class="flex-1 bg-primary-blue hover:bg-blue-700 text-white font-medium py-3 rounded-lg transition-colors flex items-center justify-center gap-2" id="saveBatchBtn" onclick="saveBatch()"><i class="fas fa-save"></i> Save Batch Plan</button>
+                <button class="flex-1 bg-gray-500 hover:bg-gray-600 text-white font-medium py-3 rounded-lg transition-colors flex items-center justify-center gap-2 hidden" id="cancelBatchBtn" onclick="resetBatchForm()"><i class="fas fa-times"></i> Cancel Edit</button>
+            </div>
+        </div>
+
+        <div class="p-6 rounded-xl shadow-xl dark:shadow-slate-800 bg-card-light dark:bg-card-dark mb-8 border border-border-subtle dark:border-border-dark">
+            <h2 class="text-xl font-semibold mb-6 pb-3 border-b border-border-subtle dark:border-border-dark"><i class="fas fa-cubes text-primary-blue mr-2"></i> Batch Inventory Overview</h2>
+            
+            <div class="segmented-control w-full sm:w-1/2 mb-6">
+                <button class="tab-btn active" onclick="showBatchSubTab('batchList', this)">Inventory</button>
+                <button class="tab-btn" onclick="showBatchSubTab('batchSalesView', this)">Sales View</button>
+            </div>
+            
+            <div id="batchList" class="sub-section active">
+                <input type="text" id="batchSearch" class="p-3 border border-gray-300 dark:border-gray-600 rounded-lg w-full sm:w-1/3 mb-4 bg-white dark:bg-gray-700 focus:ring-primary-blue focus:border-primary-blue" placeholder="Search batch name..." onkeyup="filterTable('batchSearch', 'batchTableTbody')">
+                <div class="overflow-x-auto rounded-lg border border-border-subtle dark:border-border-dark">
+                    <table class="w-full text-sm">
+                        <thead class="bg-gray-100 dark:bg-gray-700 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                            <tr><th class="p-4">Batch Name</th><th class="p-4">Target Qty</th><th class="p-4">Total Cost (₹)</th><th class="p-4">Unit Cost (₹)</th><th class="p-4">Remaining Inventory</th><th class="p-4">Actions</th></tr>
+                        </thead>
+                        <tbody id="batchTableTbody" class="divide-y divide-gray-200 dark:divide-gray-700"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div id="batchSalesView" class="sub-section hidden">
+                <div class="flex flex-col sm:flex-row items-start sm:items-center gap-4 mb-4">
+                    <label class="text-sm font-medium text-gray-700 dark:text-gray-300">Select Batch:</label>
+                    <select id="batchSalesSelect" class="p-2 border border-gray-300 dark:border-gray-600 rounded-lg w-full sm:w-1/3 bg-white dark:bg-gray-700 focus:ring-primary-blue focus:border-primary-blue" onchange="renderSalesByBatch(this.value)">
+                        <option value="">-- All Batches --</option>
+                    </select>
+                </div>
+                <div class="overflow-x-auto rounded-lg border border-border-subtle dark:border-border-dark">
+                    <table class="w-full text-sm">
+                        <thead class="bg-gray-100 dark:bg-gray-700 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                            <tr><th class="p-4">Date</th><th class="p-4">Customer</th><th class="p-4">Qty</th><th class="p-4">Revenue (₹)</th><th class="p-4">Profit (₹)</th><th class="p-4">Status</th></tr>
+                        </thead>
+                        <tbody id="batchSalesTableTbody" class="divide-y divide-gray-200 dark:divide-gray-700"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="sales" class="section hidden">
+        <div class="p-6 rounded-xl shadow-xl dark:shadow-slate-800 bg-card-light dark:bg-card-dark mb-8 border border-border-subtle dark:border-border-dark" id="saleFormCard">
+            <h2 id="saleFormTitle" class="text-xl font-semibold mb-6 pb-3 border-b border-border-subtle dark:border-border-dark"><i class="fas fa-hand-holding-usd text-primary-blue mr-2"></i> Record New Sale</h2>
+            
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+                <div><label class="block text-sm font-medium mb-1">Batch</label><select id="saleBatchSelect" onchange="updateSalePrice()" class="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 focus:ring-primary-blue focus:border-primary-blue"></select></div>
+                <div><label class="block text-sm font-medium mb-1">Date</label><input type="date" id="saleDate" class="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 focus:ring-primary-blue focus:border-primary-blue"></div>
+                <div><label class="block text-sm font-medium mb-1">Quantity</label><input type="number" id="saleQty" value="1" oninput="updateSalePrice()" class="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 focus:ring-primary-blue focus:border-primary-blue"></div>
+            </div>
+            
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                <div><label class="block text-sm font-medium mb-1">Customer Name</label><input type="text" id="custName" placeholder="Name" class="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 focus:ring-primary-blue focus:border-primary-blue"></div>
+                <div><label class="block text-sm font-medium mb-1">Phone</label><input type="text" id="custPhone" placeholder="Mobile" class="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 focus:ring-primary-blue focus:border-primary-blue"></div>
+            </div>
+            
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+                <div><label class="block text-sm font-medium mb-1">Ship Order ID (Optional)</label><input type="text" id="shipOrderId" placeholder="Tracking Number" class="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 focus:ring-primary-blue focus:border-primary-blue"></div>
+                <div><label class="block text-sm font-medium mb-1">Sale Status</label>
+                    <select id="saleStatus" class="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 focus:ring-primary-blue focus:border-primary-blue">
+                        <option value="New">New Order</option>
+                        <option value="Pending">Payment Pending</option>
+                        <option value="Shipped">Shipped</option>
+                        <option value="Delivered">Delivered</option>
+                        <option value="Cancelled">Cancelled</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium mb-1">Total Selling Price (₹) - Auto Calc</label>
+                    <input type="number" id="salePrice" class="read-only-input p-3 w-full text-xl" readonly placeholder="0.00">
+                </div>
+            </div>
+            
+            <div class="mb-6">
+                <label class="block text-sm font-medium mb-1"><i class="fas fa-info-circle text-primary-blue mr-1"></i> Cost & Price Transparency</label>
+                <div id="priceInfo" class="p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg text-sm border border-gray-200 dark:border-gray-600">
+                    Select a batch to see unit cost and calculated sale price details.
+                </div>
+            </div>
+
+            <div class="mb-6"><label class="block text-sm font-medium mb-1">Shipping Address / Additional Note (Optional)</label><textarea id="custDetail" rows="3" placeholder="Address, Email, or any notes..." class="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 focus:ring-primary-blue focus:border-primary-blue"></textarea></div>
+
+            <div class="flex gap-4">
+                <button class="flex-1 bg-primary-blue hover:bg-blue-700 text-white font-medium py-3 rounded-lg transition-colors flex items-center justify-center gap-2" id="saveSaleBtn" onclick="saveSale()"><i class="fas fa-check"></i> Record Sale</button>
+                <button class="flex-1 bg-gray-500 hover:bg-gray-600 text-white font-medium py-3 rounded-lg transition-colors flex items-center justify-center gap-2 hidden" id="cancelSaleBtn" onclick="resetSaleForm()"><i class="fas fa-undo"></i> Cancel Edit</button>
+            </div>
+        </div>
+
+        <div class="p-6 rounded-xl shadow-xl dark:shadow-slate-800 bg-card-light dark:bg-card-dark mb-8 border border-border-subtle dark:border-border-dark">
+            <h2 class="text-xl font-semibold mb-6 pb-3 border-b border-border-subtle dark:border-border-dark"><i class="fas fa-history text-primary-blue mr-2"></i> Sales History</h2>
+            <input type="text" id="saleSearch" class="p-3 border border-gray-300 dark:border-gray-600 rounded-lg w-full sm:w-1/3 mb-4 bg-white dark:bg-gray-700 focus:ring-primary-blue focus:border-primary-blue" placeholder="Search customer, batch, or date..." onkeyup="filterTable('saleSearch', 'salesTableTbody')">
+            <div class="overflow-x-auto rounded-lg border border-border-subtle dark:border-border-dark">
+                <table class="w-full text-sm">
+                    <thead class="bg-gray-100 dark:bg-gray-700 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                        <tr><th class="p-4">Date</th><th class="p-4">Customer</th><th class="p-4">Order ID</th><th class="p-4">Batch</th><th class="p-4">Qty</th><th class="p-4">Revenue (₹)</th><th class="p-4">Profit (₹)</th><th class="p-4">Status</th><th class="p-4">Actions</th></tr>
+                    </thead>
+                    <tbody id="salesTableTbody" class="divide-y divide-gray-200 dark:divide-gray-700"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // --- THEME TOGGLE ---
+    function toggleTheme() {
+        const body = document.body;
+        const isDark = body.getAttribute('data-theme') === 'dark';
+        const newTheme = isDark ? 'light' : 'dark';
+        
+        body.setAttribute('data-theme', newTheme);
+        body.classList.toggle('dark', !isDark);
+        localStorage.setItem('theme', newTheme);
+    }
+
+    // Load theme preference on startup
+    document.addEventListener('DOMContentLoaded', () => {
+        const savedTheme = localStorage.getItem('theme') || 'light';
+        document.body.setAttribute('data-theme', savedTheme);
+        document.body.classList.toggle('dark', savedTheme === 'dark');
+        document.getElementById('darkModeToggle').checked = savedTheme === 'dark';
+        
+        // Initialize active tab state
+        const initialTab = document.querySelector('.segmented-control .tab-btn');
+        if (initialTab) {
+            initialTab.classList.add('active');
+            showTab('dashboard', initialTab); // Manually initialize the first tab
+        }
+    });
+
+    // --- DATABASE INITIALIZATION (Dexie / IndexedDB) ---
+    const db = new Dexie('BusinessTrackerDB');
+    db.version(1).stores({
+        batches: '++id, name', 
+        sales: '++id, batchId, custName, date, status' 
+    });
+
+    // --- STATE & INIT ---
+    let editingBatchId = null;
+    let editingSaleId = null;
+    document.getElementById('saleDate').valueAsDate = new Date();
+    setupCalculators();
+    renderAll(); 
+
+    // --- UI HELPERS ---
+    function showTab(id, button) {
+        document.querySelectorAll('.section').forEach(d => d.classList.add('hidden'));
+        document.querySelectorAll('.segmented-control .tab-btn').forEach(b => b.classList.remove('active'));
+        
+        document.getElementById(id).classList.remove('hidden');
+        document.getElementById(id).classList.add('active'); 
+        
+        button.classList.add('active');
+    }
+    
+    function showBatchSubTab(id, button) {
+        document.querySelectorAll('#batches .sub-section').forEach(d => d.classList.add('hidden'));
+        document.querySelectorAll('#batches .segmented-control .tab-btn').forEach(b => b.classList.remove('active'));
+        
+        document.getElementById(id).classList.remove('hidden');
+        button.classList.add('active');
+        
+        if (id === 'batchSalesView') {
+            const selectedBatchId = document.getElementById('batchSalesSelect').value;
+            renderSalesByBatch(selectedBatchId);
+        }
+    }
+
+    function filterTable(inputId, tbodyId) {
+        const filter = document.getElementById(inputId).value.toLowerCase();
+        const rows = document.querySelectorAll(`#${tbodyId} tr`);
+        rows.forEach(row => {
+            const text = row.innerText.toLowerCase();
+            row.style.display = text.includes(filter) ? '' : 'none';
+        });
+    }
+
+    // --- CALCULATOR & COST LOGIC ---
+    function setupCalculators() {
+        document.querySelectorAll('.calc').forEach(inp => inp.addEventListener('input', calculateFormTotals));
+        calculateFormTotals();
+    }
+    
+    function calculateFormTotals() {
+        const v = (id) => parseFloat(document.getElementById(id).value) || 0;
+        const set = (id, val) => document.getElementById(id).value = val.toFixed(2); 
+        const calcRow = (p, q, t) => { const tot = v(p)*v(q); set(t, tot); return tot; };
+
+        const t_mat = calcRow('p_mat', 'q_mat', 't_mat');
+        const t_lin = calcRow('p_lin', 'q_lin', 't_lin');
+        const t_mship = calcRow('p_mship', 'q_mship', 't_mship');
+        const t_vship = calcRow('p_vship', 'q_vship', 't_vship');
+        const t_stitch = calcRow('p_stitch', 'q_stitch', 't_stitch');
+        const t_pack = calcRow('p_pack', 'q_pack', 't_pack');
+        const t_cship = calcRow('p_cship', 'q_cship', 't_cship');
+
+        const grandTotal = t_mat + t_lin + t_mship + t_vship + t_stitch + t_pack + t_cship;
+        set('grandTotal', grandTotal);
+
+        const targetItems = v('q_stitch');
+        document.getElementById('targetItemsDisplay').innerText = targetItems.toFixed(0);
+        document.getElementById('costPerUnitDisplay').innerText = targetItems > 0 ? (grandTotal/targetItems).toFixed(2) : '0.00';
+    }
+    
+    async function updateSalePrice() {
+        const batchId = document.getElementById('saleBatchSelect').value;
+        const qty = parseFloat(document.getElementById('saleQty').value) || 0;
+        const salePriceInput = document.getElementById('salePrice');
+        const priceInfoDiv = document.getElementById('priceInfo');
+
+        if (!batchId || qty <= 0 || batchId === 'Select...') {
+            salePriceInput.value = '0.00';
+            priceInfoDiv.innerHTML = '<span class="text-gray-500 dark:text-gray-400">Select a batch and quantity.</span>';
+            return;
+        }
+
+        const batch = await db.batches.get(parseInt(batchId));
+        if (batch) {
+            const unitCost = batch.unitCost;
+            const markupFactor = 1.5; 
+            const calculatedSalePrice = unitCost * markupFactor * qty;
+
+            salePriceInput.value = calculatedSalePrice.toFixed(2);
+            
+            priceInfoDiv.innerHTML = `
+                <p class="mb-1">Unit Cost (COGS): <b class="text-teal-600 dark:text-teal-400">${unitCost.toFixed(2)}</b></p>
+                <p class="mb-1">Selling Price (1 unit @ 50% Markup): <b class="text-green-600 dark:text-green-400">${(unitCost * markupFactor).toFixed(2)}</b></p>
+            `;
+            
+            const allSales = await db.sales.toArray();
+            let totalSold = allSales
+                .filter(s => s.batchId == batch.id && s.id !== editingSaleId)
+                .reduce((sum, s) => sum + s.qty, 0);
+
+            const remaining = batch.targetQty - totalSold;
+            
+            if (qty > remaining && remaining > 0) {
+                priceInfoDiv.innerHTML += `<p class="font-bold text-red-600 dark:text-red-400 mt-1">⚠️ Oversell Warning: Only ${remaining.toFixed(0)} items remaining in stock!</p>`;
+            } else if (remaining <= 0) {
+                priceInfoDiv.innerHTML += `<p class="font-bold text-red-600 dark:text-red-400 mt-1">❌ Batch is sold out (${remaining.toFixed(0)} available).</p>`;
+            } else {
+                priceInfoDiv.innerHTML += `<p class="text-primary-blue dark:text-blue-400 mt-1">✅ ${remaining.toFixed(0) - qty} items will remain after this sale.</p>`;
+            }
+
+        } else {
+            salePriceInput.value = '0.00';
+            priceInfoDiv.innerHTML = '<span class="text-gray-500 dark:text-gray-400">Batch details not found.</span>';
+        }
+    }
+
+
+    // --- BATCH CRUD ---
+    async function saveBatch() {
+        const name = document.getElementById('batchName').value;
+        const targetQty = parseFloat(document.getElementById('targetItemsDisplay').innerText);
+        if(!name || targetQty <= 0) { alert("Batch Name and Target Quantity are required."); return; }
+
+        const inputState = {};
+        document.querySelectorAll('.calc').forEach(el => inputState[el.id] = el.value);
+
+        const grandTotal = parseFloat(document.getElementById('grandTotal').value);
+
+        const batchData = {
+            name,
+            targetQty,
+            grandTotal,
+            unitCost: grandTotal/targetQty,
+            inputs: inputState
+        };
+
+        try {
+            if(editingBatchId) {
+                await db.batches.update(editingBatchId, batchData);
+                alert("Batch Updated!");
+            } else {
+                await db.batches.add(batchData);
+                alert("Batch Created!");
+            }
+        } catch (error) {
+            alert("Error saving batch: " + error.message);
+        }
+
+        resetBatchForm();
+        renderAll();
+    }
+
+    async function editBatch(id) {
+        const batch = await db.batches.get(id);
+        if(!batch) return;
+
+        editingBatchId = id;
+        document.getElementById('batchName').value = batch.name;
+        
+        if(batch.inputs) {
+            for(const [key, val] of Object.entries(batch.inputs)) {
+                if(document.getElementById(key)) document.getElementById(key).value = val;
+            }
+        }
+        
+        calculateFormTotals();
+        
+        document.getElementById('batchFormTitle').innerHTML = `<i class="fas fa-edit text-primary-blue mr-2"></i> Editing Batch: ${batch.name}`;
+        document.getElementById('saveBatchBtn').innerHTML = '<i class="fas fa-save"></i> Update Batch';
+        document.getElementById('cancelBatchBtn').classList.remove('hidden');
+        document.getElementById('batchFormCard').scrollIntoView({behavior: 'smooth'});
+    }
+
+    function resetBatchForm() {
+        editingBatchId = null;
+        document.getElementById('batchName').value = '';
+        const defaults = {p_mat:179, q_mat:45, p_lin:70, q_lin:40, p_mship:350, q_mship:1, p_vship:100, q_vship:10, p_stitch:550, q_stitch:10, p_pack:10, q_pack:10, p_cship:200, q_cship:10};
+        for(const [k,v] of Object.entries(defaults)) { if(document.getElementById(k)) document.getElementById(k).value = v; }
+        
+        calculateFormTotals();
+        document.getElementById('batchFormTitle').innerHTML = '<i class="fas fa-pencil-alt text-primary-blue mr-2"></i> Create New Batch Plan';
+        document.getElementById('saveBatchBtn').innerHTML = '<i class="fas fa-save"></i> Save Batch Plan';
+        document.getElementById('cancelBatchBtn').classList.add('hidden');
+    }
+
+    async function deleteBatch(id) {
+        if(confirm("DANGER! Delete this batch? All associated sales will remain, but their cost link will be lost.")) {
+            await db.batches.delete(id);
+            renderAll();
+        }
+    }
+
+    // --- SALES CRUD ---
+    async function saveSale() {
+        const batchId = document.getElementById('saleBatchSelect').value;
+        const custName = document.getElementById('custName').value;
+        const qty = parseFloat(document.getElementById('saleQty').value);
+        const price = parseFloat(document.getElementById('salePrice').value);
+
+        if(batchId === 'Select...' || !custName || isNaN(qty) || isNaN(price)) { alert("Batch, Name, and Quantity are required."); return; }
+        
+        const batch = await db.batches.get(parseInt(batchId));
+        if (!batch) { alert("Selected batch not found."); return; }
+
+        const costOfGoodsSold = qty * batch.unitCost;
+        const profit = price - costOfGoodsSold;
+        
+        const saleData = {
+            batchId: parseInt(batchId), 
+            date: document.getElementById('saleDate').value,
+            custName,
+            custPhone: document.getElementById('custPhone').value,
+            custDetail: document.getElementById('custDetail').value,
+            shipOrderId: document.getElementById('shipOrderId').value,
+            status: document.getElementById('saleStatus').value,
+            qty,
+            price,
+            profit 
+        };
+
+        try {
+            if(editingSaleId) {
+                await db.sales.update(editingSaleId, saleData);
+                alert("Sale Updated!");
+            } else {
+                await db.sales.add(saleData);
+                alert("Sale Recorded!");
+            }
+        } catch (error) {
+            alert("Error saving sale: " + error.message);
+        }
+
+        resetSaleForm();
+        renderAll();
+    }
+
+    async function editSale(id) {
+        const sale = await db.sales.get(id);
+        if(!sale) return;
+
+        editingSaleId = id; 
+        
+        document.getElementById('saleBatchSelect').value = sale.batchId;
+        document.getElementById('saleDate').value = sale.date;
+        document.getElementById('custName').value = sale.custName;
+        document.getElementById('custPhone').value = sale.custPhone;
+        document.getElementById('custDetail').value = sale.custDetail || '';
+        document.getElementById('shipOrderId').value = sale.shipOrderId || '';
+        document.getElementById('saleStatus').value = sale.status || 'New';
+        document.getElementById('saleQty').value = sale.qty;
+        document.getElementById('salePrice').value = sale.price; 
+        
+        updateSalePrice(); 
+
+        document.getElementById('saleFormTitle').innerHTML = `<i class="fas fa-edit text-primary-blue mr-2"></i> Editing Sale for ${sale.custName}`;
+        document.getElementById('saveSaleBtn').innerHTML = '<i class="fas fa-check"></i> Update Sale';
+        document.getElementById('cancelSaleBtn').classList.remove('hidden');
+        document.getElementById('saleFormCard').scrollIntoView({behavior: 'smooth'});
+    }
+
+    function resetSaleForm() {
+        editingSaleId = null;
+        document.getElementById('saleBatchSelect').value = 'Select...';
+        document.getElementById('custName').value = '';
+        document.getElementById('custPhone').value = '';
+        document.getElementById('custDetail').value = '';
+        document.getElementById('shipOrderId').value = '';
+        document.getElementById('saleStatus').value = 'New';
+        document.getElementById('saleQty').value = 1;
+        document.getElementById('salePrice').value = '';
+        document.getElementById('saleDate').valueAsDate = new Date();
+        
+        document.getElementById('saleFormTitle').innerHTML = '<i class="fas fa-hand-holding-usd text-primary-blue mr-2"></i> Record New Sale';
+        document.getElementById('saveSaleBtn').innerHTML = '<i class="fas fa-check"></i> Record Sale';
+        document.getElementById('cancelSaleBtn').classList.add('hidden');
+        
+        updateSalePrice(); 
+    }
+
+    async function deleteSale(id) {
+        if(confirm("Delete this sale?")) {
+            await db.sales.delete(id);
+            renderAll();
+        }
+    }
+
+    function getStatusBadge(status) {
+        const statusClass = status.toLowerCase().replace(/\s/g, '');
+        return `<span class="status-badge s-${statusClass}">${status}</span>`;
+    }
+
+    // --- RENDER & STATS ---
+    async function renderAll() {
+        const batches = await db.batches.toArray();
+        const sales = await db.sales.toArray();
+        
+        const salesByBatch = sales.reduce((acc, sale) => {
+            acc[sale.batchId] = (acc[sale.batchId] || 0) + sale.qty;
+            return acc;
+        }, {});
+
+        // --- DASHBOARD ANALYTICS ---
+        const totalRev = sales.reduce((a,c) => a + c.price, 0);
+        const totalProfit = sales.reduce((a,c) => a + c.profit, 0);
+        const totalCostAll = batches.reduce((a,c) => a + c.grandTotal, 0);
+        const totalItemsProduced = batches.reduce((a, c) => a + c.targetQty, 0);
+        const totalItemsSold = sales.reduce((a, c) => a + c.qty, 0);
+        const totalSalesCount = sales.length;
+        
+        let unsoldCostValue = 0;
+        let potentialRevenue = 0;
+        
+        batches.forEach(b => {
+            const remaining = b.targetQty - (salesByBatch[b.id] || 0);
+            if (remaining > 0) {
+                unsoldCostValue += remaining * b.unitCost;
+                potentialRevenue += remaining * b.unitCost * 1.5; 
+            }
+        });
+
+        // Set Dashboard Values
+        document.getElementById('totalRevenue').innerText = '₹ ' + totalRev.toLocaleString(undefined, {minimumFractionDigits: 2});
+        document.getElementById('realizedProfit').innerText = '₹ ' + totalProfit.toLocaleString(undefined, {minimumFractionDigits: 2});
+        document.getElementById('totalCostAll').innerText = '₹ ' + totalCostAll.toLocaleString(undefined, {minimumFractionDigits: 2});
+        document.getElementById('avgProfitMargin').innerText = totalSalesCount > 0 ? (totalProfit / totalSalesCount).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2}) : '0.00';
+        
+        document.getElementById('totalProduced').innerText = totalItemsProduced.toLocaleString();
+        document.getElementById('totalSold').innerText = totalItemsSold.toLocaleString();
+        document.getElementById('unsoldCostValue').innerText = '₹ ' + unsoldCostValue.toLocaleString(undefined, {minimumFractionDigits: 2});
+        document.getElementById('potentialRevenue').innerText = '₹ ' + potentialRevenue.toLocaleString(undefined, {minimumFractionDigits: 2});
+        
+        document.getElementById('realizedProfit').classList.toggle('text-red-600', totalProfit < 0);
+        document.getElementById('realizedProfit').classList.toggle('text-teal-600', totalProfit >= 0);
+
+
+        // --- BATCH TABLES & DROPDOWNS ---
+        const batchTbody = document.getElementById('batchTableTbody');
+        batchTbody.innerHTML = '';
+        
+        const selSales = document.getElementById('saleBatchSelect');
+        const selBatchView = document.getElementById('batchSalesSelect');
+        const currentSalesVal = selSales.value;
+        const currentBatchViewVal = selBatchView.value;
+        selSales.innerHTML = "<option>Select...</option>";
+        selBatchView.innerHTML = "<option value=''>-- All Batches --</option>";
+
+        batches.forEach(b => {
+            const soldQty = salesByBatch[b.id] || 0;
+            const remaining = b.targetQty - soldQty;
+            
+            batchTbody.innerHTML += `
+            <tr class="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors duration-150">
+                <td class="p-4 font-semibold">${b.name}</td>
+                <td class="p-4">${b.targetQty.toFixed(0)}</td>
+                <td class="p-4">₹ ${b.grandTotal.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
+                <td class="p-4">₹ ${b.unitCost.toFixed(2)}</td>
+                <td class="p-4 font-bold ${remaining <= 0 ? 'text-red-500' : 'text-green-500'}">${remaining.toFixed(0)} / ${b.targetQty.toFixed(0)}</td>
+                <td class="p-4 flex space-x-2">
+                    <button class="bg-blue-100 hover:bg-blue-200 text-blue-700 dark:bg-blue-900 dark:text-blue-300 rounded-md p-2 text-xs" onclick="editBatch(${b.id})"><i class="fas fa-edit"></i></button>
+                    <button class="bg-red-100 hover:bg-red-200 text-red-700 dark:bg-red-900 dark:text-red-300 rounded-md p-2 text-xs" onclick="deleteBatch(${b.id})"><i class="fas fa-trash"></i></button>
+                </td>
+            </tr>`;
+            
+            selSales.innerHTML += `<option value="${b.id}">${b.name} (Cost: ₹ ${b.unitCost.toFixed(2)}/u)</option>`;
+            selBatchView.innerHTML += `<option value="${b.id}">${b.name}</option>`;
+        });
+        
+        if(currentSalesVal) selSales.value = currentSalesVal;
+        if(currentBatchViewVal) selBatchView.value = currentBatchViewVal;
+        
+        updateSalePrice();
+        
+        // --- SALES TABLE ---
+        const salesTbody = document.getElementById('salesTableTbody');
+        salesTbody.innerHTML = '';
+        const sortedSales = [...sales].sort((a,b) => new Date(b.date) - new Date(a.date));
+        
+        sortedSales.forEach(s => {
+            const bName = batches.find(b => b.id == s.batchId)?.name || 'Unknown/Deleted';
+            const profitColor = s.profit >= 0 ? 'text-teal-600 dark:text-teal-400' : 'text-red-600 dark:text-red-400';
+            
+            salesTbody.innerHTML += `
+            <tr class="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors duration-150">
+                <td class="p-4">${s.date}</td>
+                <td class="p-4"><b>${s.custName}</b><br><span class="text-xs text-gray-500 dark:text-gray-400">${s.custPhone}</span></td>
+                <td class="p-4 text-xs text-gray-500 dark:text-gray-400">${s.shipOrderId || '-'}</td>
+                <td class="p-4"><span class="bg-blue-100 dark:bg-blue-900 text-primary-blue dark:text-blue-300 px-2 py-1 rounded-full text-xs font-medium">${bName}</span></td>
+                <td class="p-4">${s.qty.toFixed(0)}</td>
+                <td class="p-4 font-semibold">₹ ${s.price.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
+                <td class="p-4 font-bold ${profitColor}">₹ ${s.profit.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
+                <td class="p-4">${getStatusBadge(s.status)}</td>
+                <td class="p-4 flex space-x-2">
+                    <button class="bg-blue-100 hover:bg-blue-200 text-blue-700 dark:bg-blue-900 dark:text-blue-300 rounded-md p-2 text-xs" onclick="editSale(${s.id})"><i class="fas fa-edit"></i></button>
+                    <button class="bg-red-100 hover:bg-red-200 text-red-700 dark:bg-red-900 dark:text-red-300 rounded-md p-2 text-xs" onclick="deleteSale(${s.id})"><i class="fas fa-trash"></i></button>
+                </td>
+            </tr>`;
+        });
+        
+        if (document.getElementById('batchSalesView').classList.contains('active')) {
+            renderSalesByBatch(currentBatchViewVal);
+        }
+    }
+    
+    async function renderSalesByBatch(batchId) {
+        const batchSalesTableBody = document.getElementById('batchSalesTableTbody');
+        batchSalesTableBody.innerHTML = '';
+        
+        let salesToRender = [];
+        if (batchId) {
+            salesToRender = await db.sales.where('batchId').equals(parseInt(batchId)).toArray();
+        } else {
+            salesToRender = await db.sales.toArray();
+        }
+
+        const sortedSales = [...salesToRender].sort((a,b) => new Date(b.date) - new Date(a.date));
+        
+        sortedSales.forEach(s => {
+            const profitColor = s.profit >= 0 ? 'text-teal-600 dark:text-teal-400' : 'text-red-600 dark:text-red-400';
+
+            batchSalesTableBody.innerHTML += `
+            <tr class="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors duration-150">
+                <td class="p-4">${s.date}</td>
+                <td class="p-4"><b>${s.custName}</b><br><span class="text-xs text-gray-500 dark:text-gray-400">${s.custPhone}</span></td>
+                <td class="p-4">${s.qty.toFixed(0)}</td>
+                <td class="p-4 font-semibold">₹ ${s.price.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
+                <td class="p-4 font-bold ${profitColor}">₹ ${s.profit.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
+                <td class="p-4">${getStatusBadge(s.status)}</td>
+            </tr>`;
+        });
+        
+        if (salesToRender.length === 0) {
+            batchSalesTableBody.innerHTML = `<tr><td colspan="6" class="p-4 text-center text-gray-500 dark:text-gray-400">No sales found for this selection.</td></tr>`;
+        }
+    }
+
+    // --- BACKUP / IMPORT FUNCTIONS ---
+    async function exportData() {
+        const allBatches = await db.batches.toArray();
+        const allSales = await db.sales.toArray();
+        const data = { batches: allBatches, sales: allSales, timestamp: new Date().toISOString() };
+        const json = JSON.stringify(data, null, 2);
+        
+        const blob = new Blob([json], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `business_tracker_backup_${new Date().toISOString().slice(0, 10)}.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    }
+
+    function importData(event) {
+        if(!confirm("WARNING! Importing will OVERWRITE ALL existing data. Continue?")) {
+            event.target.value = null; 
+            return;
+        }
+
+        const file = event.target.files[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = async (e) => {
+            try {
+                const data = JSON.parse(e.target.result);
+                if (!data.batches || !data.sales) {
+                    throw new Error("Invalid backup file structure.");
+                }
+
+                await db.batches.clear();
+                await db.sales.clear();
+                
+                const batchesToImport = data.batches;
+                const salesToImport = data.sales.map(s => {
+                    if (typeof s.profit === 'undefined') {
+                        const batch = batchesToImport.find(b => b.id === s.batchId);
+                        const unitCost = batch ? batch.unitCost : 0;
+                        s.profit = s.price - (s.qty * unitCost);
+                    }
+                    return s;
+                });
+
+                await db.batches.bulkAdd(batchesToImport);
+                await db.sales.bulkAdd(salesToImport);
+
+                alert(`Import Successful! ${batchesToImport.length} batches and ${salesToImport.length} sales loaded.`);
+                event.target.value = null; 
+                renderAll();
+            } catch (error) {
+                alert("Import failed. Check the file format. Error: " + error.message);
+                event.target.value = null;
+            }
+        };
+        reader.readAsText(file);
+    }
+    
+    async function clearDatabase() {
+        if(confirm("DANGER! This will wipe ALL data from your browser's IndexedDB. Are you sure?")) {
+            await db.delete();
+            alert("Database cleared!");
+            location.reload();
+        }
+    }
+</script>
+</body>
+</html>
