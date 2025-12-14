@@ -16,8 +16,8 @@ export default defineConfig({
         theme_color: '#2563eb',
         background_color: '#f9fafb',
         display: 'standalone',
-        scope: '/',
-        start_url: '/',
+        scope: '/BlushBloom/',
+        start_url: '/BlushBloom/',
         orientation: 'portrait',
         icons: [
           {
