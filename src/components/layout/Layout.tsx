@@ -10,6 +10,8 @@ export const Layout: React.FC = () => {
         { path: '/', label: 'Dashboard', icon: LayoutDashboard },
         { path: '/inventory', label: 'Inventory', icon: Package },
         { path: '/sales', label: 'Sales', icon: DollarSign },
+        { path: '/currentexpense', label: 'Ledger', icon: DollarSign },
+        { path: '/reports', label: 'Reports', icon: LayoutDashboard },
         { path: '/settings', label: 'Settings', icon: Settings },
     ];
 

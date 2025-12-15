@@ -1,44 +1,43 @@
 import React, { useState } from 'react';
-import { useLiveQuery } from 'dexie-react-hooks';
-import { db, type Sale, type Batch } from '../db/db';
+import { useSales, useBatches, saleService } from '../hooks/useFirestore';
+import { type Sale } from '../types';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
-import { Plus, Search, Trash2, Edit2, DollarSign, Image as ImageIcon } from 'lucide-react';
+import { Plus, Search, Trash2, Edit2, DollarSign, Image as ImageIcon, FileText, MapPin } from 'lucide-react';
 import { SaleForm } from '../components/sales/SaleForm';
 import { format } from 'date-fns';
 
 export const Sales: React.FC = () => {
-    const [showForm, setShowForm] = useState(false);
+    const [isFormOpen, setIsFormOpen] = useState(false);
     const [editingSale, setEditingSale] = useState<Sale | undefined>(undefined);
     const [search, setSearch] = useState('');
 
-    // Join with batches for display name? Dexie doesn't do joins easily.
-    // We'll fetch all batches to lookup names.
-    const batches = useLiveQuery(() => db.batches.toArray());
-    const sales = useLiveQuery(() => db.sales.toArray());
+    // Load Data
+    const { data: batches } = useBatches();
+    const { data: sales, loading } = useSales();
 
-    const filteredSales = sales?.filter((s: Sale) =>
+    const filteredSales = sales.filter((s) =>
         s.custName.toLowerCase().includes(search.toLowerCase()) ||
         s.status.toLowerCase().includes(search.toLowerCase())
-    ).sort((a: Sale, b: Sale) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    ).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
-    const getBatchName = (id: number) => batches?.find((b: Batch) => b.id === id)?.name || 'Unknown Batch';
+    const getBatchName = (id: string) => batches.find((b) => b.id === id)?.name || 'Unknown Batch';
 
-    const handleDelete = async (id: number) => {
+    const handleDelete = async (id?: string) => {
+        if (!id) return;
         if (confirm('Delete this sale record?')) {
-            await db.sales.delete(id);
+            await saleService.delete(id);
         }
     };
 
     const handleEdit = (sale: Sale) => {
         setEditingSale(sale);
-        setShowForm(true);
+        setIsFormOpen(true);
     };
 
-    const closeForm = () => {
-        setShowForm(false);
-        setEditingSale(undefined);
-    };
+    if (loading) {
+        return <div className="p-8 text-center">Loading sales...</div>;
+    }
 
     return (
         <div className="space-y-6">
@@ -47,15 +46,15 @@ export const Sales: React.FC = () => {
                     <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Sales & Orders</h2>
                     <p className="text-gray-500 dark:text-gray-400">Manage customer orders and payments.</p>
                 </div>
-                <Button onClick={() => setShowForm(true)} className="gap-2">
+                <Button onClick={() => { setEditingSale(undefined); setIsFormOpen(true); }} className="gap-2">
                     <Plus size={18} /> Record New Sale
                 </Button>
             </div>
 
-            {showForm && (
+            {isFormOpen && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm fade-in">
-                    <div className="w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-                        <SaleForm onClose={closeForm} initialData={editingSale} />
+                    <div className="w-full max-w-2xl max-h-[90vh] overflow-y-auto bg-white dark:bg-card-dark rounded-2xl">
+                        <SaleForm onClose={() => setIsFormOpen(false)} initialData={editingSale} />
                     </div>
                 </div>
             )}
@@ -89,10 +88,10 @@ export const Sales: React.FC = () => {
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-100 dark:divide-slate-700">
-                            {filteredSales?.length === 0 && (
+                            {filteredSales.length === 0 && (
                                 <tr><td colSpan={8} className="p-8 text-center text-gray-500">No sales found.</td></tr>
                             )}
-                            {filteredSales?.map((sale: Sale) => {
+                            {filteredSales.map((sale) => {
                                 const profitClass = sale.profit >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400';
 
                                 return (
@@ -100,20 +99,38 @@ export const Sales: React.FC = () => {
                                         <td className="p-4 text-gray-500">{format(new Date(sale.date), 'MMM dd, yyyy')}</td>
                                         <td className="p-4 font-medium">
                                             {sale.custName}
-                                            {sale.paymentScreenshot && <ImageIcon size={14} className="inline ml-2 text-blue-500" />}
+                                            <div className="flex gap-2 mt-1">
+                                                {sale.paymentScreenshot && (
+                                                    <a href={sale.paymentScreenshot} download={`receipt-${sale.custName}.png`} className="text-blue-500 hover:text-blue-700" title="Download Receipt">
+                                                        <ImageIcon size={14} />
+                                                    </a>
+                                                )}
+                                                {sale.notes && (
+                                                    <span className="text-yellow-500" title={sale.notes}>
+                                                        <FileText size={14} />
+                                                    </span>
+                                                )}
+                                                {sale.custAddress && (
+                                                    <span className="text-gray-400" title={sale.custAddress}>
+                                                        <MapPin size={14} />
+                                                    </span>
+                                                )}
+                                            </div>
                                         </td>
-                                        <td className="p-4 text-xs font-mono bg-gray-100 dark:bg-slate-800 rounded px-2 py-1 fit-content">{getBatchName(sale.batchId)}</td>
+                                        <td className="p-4 text-xs font-mono bg-gray-100 dark:bg-slate-800 rounded px-2 py-1 fit-content w-max">
+                                            {getBatchName(sale.batchId)}
+                                        </td>
                                         <td className="p-4">{sale.qty}</td>
                                         <td className="p-4 font-bold">₹{sale.price.toLocaleString()}</td>
-                                        <td className={`p - 4 font - bold ${profitClass} `}>₹{sale.profit.toLocaleString()}</td>
+                                        <td className={`p-4 font-bold ${profitClass}`}>₹{sale.profit.toLocaleString()}</td>
                                         <td className="p-4">
-                                            <span className={`status - badge s - ${sale.status.toLowerCase()} `}>{sale.status}</span>
+                                            <span className={`status-badge s-${sale.status.toLowerCase()}`}>{sale.status}</span>
                                         </td>
                                         <td className="p-4 text-right space-x-2">
                                             <button onClick={() => handleEdit(sale)} className="p-2 hover:bg-blue-50 dark:hover:bg-blue-900/30 text-blue-600 rounded-lg transition-colors">
                                                 <Edit2 size={16} />
                                             </button>
-                                            <button onClick={() => sale.id && handleDelete(sale.id)} className="p-2 hover:bg-red-50 dark:hover:bg-red-900/30 text-red-600 rounded-lg transition-colors">
+                                            <button onClick={() => handleDelete(sale.id)} className="p-2 hover:bg-red-50 dark:hover:bg-red-900/30 text-red-600 rounded-lg transition-colors">
                                                 <Trash2 size={16} />
                                             </button>
                                         </td>

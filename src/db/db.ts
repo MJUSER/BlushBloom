@@ -8,6 +8,16 @@ export interface Batch {
     grandTotal: number;
     unitCost: number;
     inputs: Record<string, number>; // Stores the calculator inputs (p_mat, q_mat etc.)
+
+    // New Fields v2
+    marginPerUnit?: number;
+    sellingPrice?: number;
+
+    // E-com Fields
+    publicName?: string;
+    description?: string;
+    category?: string;
+    isPublic?: boolean;
 }
 
 export interface Sale {
@@ -23,11 +33,26 @@ export interface Sale {
     price: number;
     profit: number;
     paymentScreenshot?: Blob; // Image attachment
+
+    // New Fields v2
+    discount?: number;     // Amount deducted
+    courier?: string;      // "DTDC", "SpeedPost"
+    trackingNumber?: string;
+}
+
+export interface Expense {
+    id?: number;
+    date: string;
+    description: string;
+    amount: number;
+    category: 'Material' | 'Equipment' | 'Marketing' | 'Other';
+    type: 'CREDIT' | 'DEBIT'; // CREDIT = Deposit, DEBIT = Expense
 }
 
 export class BusinessTrackerDB extends Dexie {
     batches!: Table<Batch>;
     sales!: Table<Sale>;
+    expenses!: Table<Expense>;
 
     constructor() {
         super('BusinessTrackerDB');
@@ -35,8 +60,13 @@ export class BusinessTrackerDB extends Dexie {
             batches: '++id, name',
             sales: '++id, batchId, custName, date, status'
         });
-        // Version 2: Add paymentScreenshot to sales if we need to migrate later, 
-        // but for now, we can just start with it. Dexie is flexible.
+
+        // Version 2: Add expenses table and indexes for new fields
+        this.version(2).stores({
+            batches: '++id, name, category, isPublic',
+            sales: '++id, batchId, custName, date, status, courier',
+            expenses: '++id, date, type, category' // New table
+        });
     }
 }
 

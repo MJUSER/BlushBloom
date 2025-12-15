@@ -1,24 +1,29 @@
 import React from 'react';
-import { useLiveQuery } from 'dexie-react-hooks';
-import { db } from '../db/db';
+import { useSales, useBatches, useExpenses } from '../hooks/useFirestore';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card';
-import { DollarSign, TrendingUp, Package, AlertCircle } from 'lucide-react';
+import { DollarSign, TrendingUp, AlertCircle, TrendingDown } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
 import { format, subDays, isSameDay } from 'date-fns';
 
 export const Dashboard: React.FC = () => {
-    const sales = useLiveQuery(() => db.sales.toArray());
-    const batches = useLiveQuery(() => db.batches.toArray());
+    const { data: sales, loading: loadingSales } = useSales();
+    const { data: batches } = useBatches();
+    const { data: expenses } = useExpenses();
+
+    if (loadingSales) return <div className="p-8 text-center">Loading dashboard...</div>;
 
     // --- STATS CALCULATION ---
-    const totalRev = sales?.reduce((acc, s) => acc + s.price, 0) || 0;
-    const totalProfit = sales?.reduce((acc, s) => acc + s.profit, 0) || 0;
-    const totalSalesCount = sales?.length || 0;
+    const totalRev = sales.reduce((acc, s) => acc + s.price, 0);
+    const grossProfit = sales.reduce((acc, s) => acc + s.profit, 0);
+
+    // Expenses
+    const totalExpenses = expenses.reduce((acc, e) => acc + e.amount, 0);
+    const netProfit = grossProfit - totalExpenses;
 
     // Calculate potential value of unsold inventory
     let unsoldValue = 0;
-    batches?.forEach(b => {
-        const soldQty = sales?.filter(s => s.batchId === b.id).reduce((acc, s) => acc + s.qty, 0) || 0;
+    batches.forEach(b => {
+        const soldQty = sales.filter(s => s.batchId === b.id && s.status !== 'Cancelled').reduce((acc, s) => acc + s.qty, 0);
         const remaining = b.targetQty - soldQty;
         if (remaining > 0) unsoldValue += remaining * b.unitCost;
     });
@@ -27,7 +32,7 @@ export const Dashboard: React.FC = () => {
     // Last 7 days sales trend
     const trendData = Array.from({ length: 7 }).map((_, i) => {
         const d = subDays(new Date(), 6 - i);
-        const daySales = sales?.filter(s => isSameDay(new Date(s.date), d)) || [];
+        const daySales = sales.filter(s => isSameDay(new Date(s.date), d));
         return {
             date: format(d, 'MMM dd'),
             revenue: daySales.reduce((acc, s) => acc + s.price, 0),
@@ -36,11 +41,11 @@ export const Dashboard: React.FC = () => {
     });
 
     // Product Performance (Profit by Batch)
-    const batchPerformance = batches?.map(b => {
-        const batchSales = sales?.filter(s => s.batchId === b.id) || [];
+    const batchPerformance = batches.map(b => {
+        const batchSales = sales.filter(s => s.batchId === b.id);
         const profit = batchSales.reduce((acc, s) => acc + s.profit, 0);
         return { name: b.name, value: profit };
-    }).filter(b => b.value > 0).slice(0, 5) || [];
+    }).filter(b => b.value > 0).slice(0, 5);
 
     const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8'];
 
@@ -69,22 +74,23 @@ export const Dashboard: React.FC = () => {
                     <CardContent className="p-6">
                         <div className="flex justify-between items-start">
                             <div>
-                                <p className="text-emerald-100 font-medium text-sm">Realized Profit</p>
-                                <h3 className="text-3xl font-bold mt-1">₹{totalProfit.toLocaleString()}</h3>
+                                <p className="text-emerald-100 font-medium text-sm">Net Profit</p>
+                                <h3 className="text-3xl font-bold mt-1">₹{netProfit.toLocaleString()}</h3>
+                                <p className="text-xs text-emerald-100 mt-1">Gross: ₹{grossProfit.toLocaleString()}</p>
                             </div>
                             <div className="p-2 bg-white/20 rounded-lg"><TrendingUp size={20} /></div>
                         </div>
                     </CardContent>
                 </Card>
 
-                <Card className="bg-white dark:bg-card-dark">
+                <Card className="bg-white dark:bg-card-dark border-l-4 border-l-red-500">
                     <CardContent className="p-6">
                         <div className="flex justify-between items-start">
                             <div>
-                                <p className="text-gray-500 dark:text-gray-400 font-medium text-sm">Total Orders</p>
-                                <h3 className="text-3xl font-bold mt-1 text-gray-900 dark:text-white">{totalSalesCount}</h3>
+                                <p className="text-gray-500 dark:text-gray-400 font-medium text-sm">Total Expenses</p>
+                                <h3 className="text-3xl font-bold mt-1 text-red-600 dark:text-red-400">₹{totalExpenses.toLocaleString()}</h3>
                             </div>
-                            <div className="p-2 bg-gray-100 dark:bg-slate-700 rounded-lg text-gray-600 dark:text-gray-300"><Package size={20} /></div>
+                            <div className="p-2 bg-red-50 dark:bg-red-900/20 rounded-lg text-red-500"><TrendingDown size={20} /></div>
                         </div>
                     </CardContent>
                 </Card>
@@ -93,7 +99,7 @@ export const Dashboard: React.FC = () => {
                     <CardContent className="p-6">
                         <div className="flex justify-between items-start">
                             <div>
-                                <p className="text-gray-500 dark:text-gray-400 font-medium text-sm">Unsold Inventory Value</p>
+                                <p className="text-gray-500 dark:text-gray-400 font-medium text-sm">Unsold Inventory</p>
                                 <h3 className="text-3xl font-bold mt-1 text-gray-900 dark:text-white">₹{unsoldValue.toLocaleString()}</h3>
                             </div>
                             <div className="p-2 bg-gray-100 dark:bg-slate-700 rounded-lg text-gray-600 dark:text-gray-300"><AlertCircle size={20} /></div>
